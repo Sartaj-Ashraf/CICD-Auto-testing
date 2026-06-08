@@ -1,0 +1,108 @@
+name: Deploy Application
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Clone or Update Repository
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            if [ ! -d "/home/ubuntu/CICD-pipline-test/.git" ]; then
+              git clone https://github.com/Sartaj-Ashraf/CICD-pipline-test.git /home/ubuntu/CICD-pipline-test
+            else
+              cd /home/ubuntu/CICD-pipline-test
+              git fetch origin
+              git reset --hard origin/main
+            fi
+
+      ##################################################
+      # BUILD FRONTEND
+      ##################################################
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Build Frontend
+        working-directory: frontend
+        run: npm run build
+
+      ##################################################
+      # BUILD BACKEND
+      ##################################################
+
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: npm install
+
+      ##################################################
+      # DEPLOY BACKEND
+      ##################################################
+
+      - name: Deploy Backend
+        uses: easingthemes/ssh-deploy@v5.1.0
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          REMOTE_HOST: ${{ secrets.EC2_HOST }}
+          REMOTE_USER: ubuntu
+          SOURCE: "backend/"
+          TARGET: "/home/ubuntu/CICD-pipline-test/backend/"
+
+      ##################################################
+      # DEPLOY FRONTEND DIST
+      ##################################################
+
+      - name: Deploy Frontend Dist
+        uses: easingthemes/ssh-deploy@v5.1.0
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          REMOTE_HOST: ${{ secrets.EC2_HOST }}
+          REMOTE_USER: ubuntu
+          SOURCE: "frontend/dist/"
+          TARGET: "/home/ubuntu/CICD-pipline-test/frontend/dist/"
+
+      ##################################################
+      # FINALIZE ON SERVER
+      ##################################################
+
+      - name: Configure Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            # Backend
+            cd /home/ubuntu/CICD-pipline-test/backend
+            npm install --production
+
+            # Frontend
+            sudo mkdir -p /var/www/html/cicd/dist
+            sudo rm -rf /var/www/html/cicd/dist/*
+            sudo cp -r /home/ubuntu/CICD-pipline-test/frontend/dist/* /var/www/html/cicd/dist/
+
+            sudo chown -R www-data:www-data /var/www/html/cicd
+            sudo chmod -R 755 /var/www/html/cicd
+
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            pm2 reload all
+            pm2 save
