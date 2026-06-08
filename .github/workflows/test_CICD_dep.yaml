@@ -25,7 +25,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           script: |
             if [ ! -d "/home/ubuntu/CICD-pipline-test/.git" ]; then
-              git clone https://github.com/Sartaj-Ashraf/CICD-pipline-test.git /home/ubuntu/CICD-pipline-test
+              git clone https://github.com/Sartaj-Ashraf/CICD-Auto-testing.git /home/ubuntu/CICD-pipline-test
             else
               cd /home/ubuntu/CICD-pipline-test
               git fetch origin
